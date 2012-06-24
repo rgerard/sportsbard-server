@@ -1,0 +1,92 @@
+#!/usr/bin/env node
+
+var express = require("express"),
+    app = express.createServer(),
+    io = require('socket.io').listen(app); // socket.io may listen to an http
+                                           // or express server
+
+// Database Config
+var mongo = require('mongojs'),
+    db = mongo.connect('mongodb://nodejitsu:2eff28719f880c3dd40dc3e21da0bdf6@staff.mongohq.com:10050/nodejitsudb413241133497', ['users', 'games', 'stories']);
+
+// Use Express to serve static content, such as our index.html
+app.configure(function(){
+  app.use(express.static(__dirname + '/../public'));
+});
+
+//Socket.io emits this event when a connection is made.
+io.sockets.on('connection', function (socket) {
+
+  // Emit a message to send it to the client.
+  socket.emit('ping', { msg: 'Hello. I know socket.io.' });
+
+  // Print messages from the client.
+  socket.on('scoreupdate', function (data) {
+    console.log(data);
+
+    var gameid = data.gameid,
+        team = data.team,
+        score = data.score,
+        updateTime = new Date().getTime()/1000;
+
+    db.games.findOne({'gameid':gameid}, function(err, result) {
+        if(result !== null) {
+            if(result.awayteam === team) {
+                //db.games.update({'gameid':gameid}, {$set: {'awayscore':parseInt(score), 'lastupdate':updateTime}}, {safe:true}, function(err) {
+                    console.log('Updated game ' + gameid);
+                    result.awayscore = parseInt(score);
+                    socket.emit('scoreupdated', result);
+                    socket.broadcast.emit('scoreupdated', result);
+                //});
+            } else {
+                //db.games.update({'gameid':gameid}, {$set: {'homescore':parseInt(score), 'lastupdate':updateTime}}, {safe:true}, function(err) {
+                    console.log('Updated game ' + gameid);
+                    result.homescore = parseInt(score);
+                    socket.emit('scoreupdated', result);
+                    socket.broadcast.emit('scoreupdated', result);
+                //});
+            }
+        } else {
+            console.log('No game with ID ' + gameid);
+        }
+    });
+  });
+
+});
+
+app.listen(8080);
+
+app.get('/games', function(req, res) {
+    db.games.find().sort({date:0}, function(err, results) {
+        res.send(results);
+    });
+});
+
+
+function handleImportMlbGet(req, res) {
+    var fs = require('fs');
+
+    fs.readFileSync('/Users/ryan/Projects/sportsbard-server/socket.io/mlb.csv').toString().split('\n')
+        .forEach(function (line) {
+            if(line !== '') {
+                var parts = line.toString().split(','),
+                    gameid = parts[0],
+                    gamedatetime = parts[1].trim(),
+                    homepts = parts[2].trim(),
+                    awaypts = parts[3].trim(),
+                    hometeam = parts[4].trim(),
+                    awayteam = parts[5].trim(),
+                    dateNow = new Date().getTime()/1000;
+
+                db.games.update({'gameid':gameid}, {'gameid':gameid, 'awayteam':awayteam, 'hometeam':hometeam, 'awayscore':-1, 'homescore':-1, 'inning':-1, 'date':gamedatetime, 'lastupdate':dateNow}, {upsert:true, safe:true}, function(err) {
+                    console.log('Inserted game ' + gameid);
+                });
+            }
+        });
+}
+
+app.get('/import', function(req, res) {
+    handleImportMlbGet(req, res);
+});
+
+console.log('socket.io server started on port 8080');

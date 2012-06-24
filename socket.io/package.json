@@ -1,0 +1,23 @@
+{
+  "name": "nodeapps-socket.io",
+  "author": {
+    "name": "Nodejitsu Inc.",
+    "email": "support@nodejitsu.com"
+  },
+  "scripts": {
+    "start": "./bin/server"
+  },
+  "version": "0.1.1-1",
+  "dependencies": {
+    "socket.io": "v0.8.x",
+    "express": "v2.5.x",
+    "mongojs": ">= 0.0.1"
+  },
+  "engines": {
+    "node": "0.6.x"
+  },
+  "analyze": false,
+  "devDependencies": {},
+  "optionalDependencies": {},
+  "subdomain": "sportsbard"
+}
