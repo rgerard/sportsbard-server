@@ -132,7 +132,7 @@ io.sockets.on('connection', function (socket) {
         var storyid = data.storyid,
             updateTime = new Date().getTime()/1000;
 
-        db.stories.findOne({'_id':storyid}, function(err, result) {
+        db.stories.findOne({'_id':new ObjectID(storyid)}, function(err, result) {
             if(result !== null) {
                 //db.stories.update({'_id':new ObjectID(storyid)}, {$inc: {'likes':1}}, {safe:true}, function(err) {
                     console.log('Updated story ' + storyid);
@@ -154,11 +154,11 @@ io.sockets.on('connection', function (socket) {
         var storyid = data.storyid,
             updateTime = new Date().getTime()/1000;
 
-        db.stories.findOne({'_id':storyid}, function(err, result) {
+        db.stories.findOne({'_id':new ObjectID(storyid)}, function(err, result) {
             if(result !== null) {
                 //db.stories.update({'_id':new ObjectID(storyid)}, {$set: {'isHidden':true}}, {safe:true}, function(err) {
                     console.log('Updated story ' + storyid);
-                    result.likes += 1;
+                    result.isHidden = true;
 
                     socket.emit('storyupdated', result);
                     socket.broadcast.emit('storyupdated', result);
