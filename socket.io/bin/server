@@ -2,8 +2,8 @@
 
 var express = require("express"),
     app = express.createServer(),
-    io = require('socket.io').listen(app); // socket.io may listen to an http
-                                           // or express server
+    io = require('socket.io').listen(app), // socket.io may listen to an http or express server
+    ObjectID = require('mongodb').ObjectID;
 
 // Database Config
 var mongo = require('mongojs'),
@@ -17,41 +17,157 @@ app.configure(function(){
 //Socket.io emits this event when a connection is made.
 io.sockets.on('connection', function (socket) {
 
-  // Emit a message to send it to the client.
-  socket.emit('ping', { msg: 'Hello. I know socket.io.' });
+    // Emit a message to send it to the client.
+    socket.emit('ping', { msg: 'Hello. I know socket.io.' });
 
-  // Print messages from the client.
-  socket.on('scoreupdate', function (data) {
-    console.log(data);
+    // Client is sending a score update
+    socket.on('scoreupdate', function (data) {
+        console.log(data);
 
-    var gameid = data.gameid,
-        team = data.team,
-        score = data.score,
-        updateTime = new Date().getTime()/1000;
+        var gameid = data.gameid,
+            team = data.team,
+            updateTime = new Date().getTime()/1000;
 
-    db.games.findOne({'gameid':gameid}, function(err, result) {
-        if(result !== null) {
-            if(result.awayteam === team) {
-                //db.games.update({'gameid':gameid}, {$set: {'awayscore':parseInt(score), 'lastupdate':updateTime}}, {safe:true}, function(err) {
-                    console.log('Updated game ' + gameid);
-                    result.awayscore = parseInt(score);
-                    socket.emit('scoreupdated', result);
-                    socket.broadcast.emit('scoreupdated', result);
-                //});
+        db.games.findOne({'gameid':gameid}, function(err, result) {
+            if(result !== null) {
+                if(result.awayteam === team) {
+                    db.games.update({'gameid':gameid}, { $inc:{'awayscore':1}, $set:{'lastupdate':updateTime}}, {safe:true}, function(err) {
+                        console.log('Updated game ' + gameid);
+                        result.awayscore += 1;
+                        socket.emit('scoreupdated', result);
+                        socket.broadcast.emit('scoreupdated', result);
+                    });
+                } else {
+                    db.games.update({'gameid':gameid}, { $inc:{'homescore':1}, $set:{'lastupdate':updateTime}}, {safe:true}, function(err) {
+                        console.log('Updated game ' + gameid);
+                        result.homescore += 1;
+                        socket.emit('scoreupdated', result);
+                        socket.broadcast.emit('scoreupdated', result);
+                    });
+                }
             } else {
-                //db.games.update({'gameid':gameid}, {$set: {'homescore':parseInt(score), 'lastupdate':updateTime}}, {safe:true}, function(err) {
-                    console.log('Updated game ' + gameid);
-                    result.homescore = parseInt(score);
-                    socket.emit('scoreupdated', result);
-                    socket.broadcast.emit('scoreupdated', result);
-                //});
+                console.log('No game with ID ' + gameid);
             }
+        });
+    });
+
+    // Client is sending an inning update
+    socket.on('inningupdate', function (data) {
+        console.log(data);
+
+        var gameid = data.gameid,
+            updateTime = new Date().getTime()/1000;
+
+        db.games.findOne({'gameid':gameid}, function(err, result) {
+            if(result !== null) {
+                db.games.update({'gameid':gameid}, {$inc: {'inning':1}}, {safe:true}, function(err) {
+                    console.log('Updated game ' + gameid);
+                    result.inning += 1;
+                    socket.emit('inningupdated', result);
+                    socket.broadcast.emit('inningupdated', result);
+                });
+            } else {
+                console.log('No game with ID ' + gameid);
+            }
+        });
+    });
+
+    // Client requests all stories
+    socket.on('getstories', function (data) {
+        console.log(data);
+
+        var gameid = data.gameid;
+
+        db.stories.find({'gameid':gameid}, function(err, results) {
+            if(results !== null) {
+                console.log(results);
+                socket.emit('stories', results);
+            } else {
+                console.log('No story with ID ' + storyid);
+            }
+        });
+    });
+
+    // Client is sending a new story
+    socket.on('newstory', function (data) {
+        console.log(data);
+
+        var gameid = data.gameid,
+            inning = data.inning,
+            story = data.story,
+            user = data.user,
+            updateTime = new Date().getTime()/1000;
+
+        if(user === null || typeof user === 'undefined') {
+            user = 'Unknown';
+        }
+
+        if(story !== null && typeof story !== 'undefined' && story !== '') {
+            var newStory = {};
+            newStory.gameid = gameid;
+            newStory.inning = inning;
+            newStory.story = story;
+            newStory.user = user;
+            newStory.lastupdate = updateTime;
+            newStory.likes = 0;
+            newStory.isHidden = false;
+            newStory.source = 'client';
+
+            db.stories.save(newStory, function(err) {
+                console.log('New story saved');
+                console.log(newStory);
+
+                socket.emit('newstory', newStory);
+                socket.broadcast.emit('newstory', newStory);
+            });
         } else {
-            console.log('No game with ID ' + gameid);
+            console.log('Empty story!');
         }
     });
-  });
 
+    // Client likes a story
+    socket.on('storylike', function (data) {
+        console.log(data);
+
+        var storyid = data.storyid,
+            updateTime = new Date().getTime()/1000;
+
+        db.stories.findOne({'_id':storyid}, function(err, result) {
+            if(result !== null) {
+                //db.stories.update({'_id':new ObjectID(storyid)}, {$inc: {'likes':1}}, {safe:true}, function(err) {
+                    console.log('Updated story ' + storyid);
+                    result.likes += 1;
+
+                    socket.emit('storyupdated', result);
+                    socket.broadcast.emit('storyupdated', result);
+                //});
+            } else {
+                console.log('No story with ID ' + storyid);
+            }
+        });
+    });
+
+    // Client wants to hide a story
+    socket.on('storyhide', function (data) {
+        console.log(data);
+
+        var storyid = data.storyid,
+            updateTime = new Date().getTime()/1000;
+
+        db.stories.findOne({'_id':storyid}, function(err, result) {
+            if(result !== null) {
+                //db.stories.update({'_id':new ObjectID(storyid)}, {$set: {'isHidden':true}}, {safe:true}, function(err) {
+                    console.log('Updated story ' + storyid);
+                    result.likes += 1;
+
+                    socket.emit('storyupdated', result);
+                    socket.broadcast.emit('storyupdated', result);
+                //});
+            } else {
+                console.log('No story with ID ' + storyid);
+            }
+        });
+    });
 });
 
 app.listen(8080);
@@ -78,7 +194,7 @@ function handleImportMlbGet(req, res) {
                     awayteam = parts[5].trim(),
                     dateNow = new Date().getTime()/1000;
 
-                db.games.update({'gameid':gameid}, {'gameid':gameid, 'awayteam':awayteam, 'hometeam':hometeam, 'awayscore':-1, 'homescore':-1, 'inning':-1, 'date':gamedatetime, 'lastupdate':dateNow}, {upsert:true, safe:true}, function(err) {
+                db.games.update({'gameid':gameid}, {'gameid':gameid, 'awayteam':awayteam, 'hometeam':hometeam, 'awayscore':0, 'homescore':0, 'inning':0, 'date':gamedatetime, 'lastupdate':dateNow}, {upsert:true, safe:true}, function(err) {
                     console.log('Inserted game ' + gameid);
                 });
             }
@@ -87,6 +203,14 @@ function handleImportMlbGet(req, res) {
 
 app.get('/import', function(req, res) {
     handleImportMlbGet(req, res);
+});
+
+app.get('/clear', function(req, res) {
+    db.games.remove(function(err) {
+        db.stories.remove(function(err) {
+            res.send('Finished!');
+        });
+    });
 });
 
 console.log('socket.io server started on port 8080');
